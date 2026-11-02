@@ -33,7 +33,7 @@ class FavoriteResponse(BaseModel):
 
 class AddressCreate(BaseModel):
     label: str = Field(..., max_length=50, examples=["Home"])
-    line1: str = Field(..., max_length=255, examples=["12, MG Road"])
+    line1: str = Field("", max_length=255, examples=["12, MG Road"])
     line2: str | None = Field(None, max_length=255)
     city: str = Field(..., max_length=100, examples=["Bengaluru"])
     pincode: str = Field(..., pattern=r"^\d{6}$", examples=["560001"])

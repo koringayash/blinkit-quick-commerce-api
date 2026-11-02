@@ -11,6 +11,7 @@ from app.core.database import Base, engine
 from app.core.logging import get_logger, setup_logging
 from app.core.middleware import register_middlewares
 from app.services.order_service import run_order_expiry_worker
+from app.services.seed_service import seed_initial_data
 
 # Initialize structured logging before anything else
 setup_logging()
@@ -20,6 +21,7 @@ _STARTUP_SCHEMA_UPGRADES = (
     "ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS category VARCHAR(50)",
     "ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS brand VARCHAR(50)",
     "ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS description VARCHAR(500)",
+    "ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS image_url VARCHAR(500)",
     "CREATE INDEX IF NOT EXISTS ix_inventory_items_category ON inventory_items (category)",
     "CREATE INDEX IF NOT EXISTS ix_inventory_items_brand ON inventory_items (brand)",
     "CREATE INDEX IF NOT EXISTS ix_inventory_items_name ON inventory_items (name)",
@@ -40,6 +42,7 @@ async def lifespan(app: FastAPI):
         for ddl in _STARTUP_SCHEMA_UPGRADES:
             await conn.execute(text(ddl))
 
+    await seed_initial_data()
     expiry_task = asyncio.create_task(run_order_expiry_worker(), name="order-expiry-worker")
     logger.info("Application startup complete.")
     try:
@@ -58,6 +61,19 @@ app = FastAPI(title="Blinkit Inventory Microservice MVP", lifespan=lifespan)
 register_middlewares(app)
 
 # Register API routers
+@app.get("/health", tags=["health"])
+async def health_check():
+    """Liveness/readiness probe used by Docker & orchestrators: verifies the DB is reachable."""
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(status_code=503, content={"status": "unhealthy", "database": str(exc)[:200]})
+    return {"status": "ok", "database": "ok"}
+
+
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(stores.router)

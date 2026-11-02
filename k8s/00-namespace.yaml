@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: quickkart
+  labels:
+    app.kubernetes.io/name: quickkart
+    app.kubernetes.io/part-of: quickkart
+

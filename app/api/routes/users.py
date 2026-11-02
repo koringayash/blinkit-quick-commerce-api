@@ -121,7 +121,10 @@ async def add_address(
     if payload.is_default:
         # Only one default address per user
         await db.execute(update(Address).where(Address.user_id == user.id).values(is_default=False))
-    address = Address(user_id=user.id, **payload.model_dump())
+    data = payload.model_dump()
+    if not data.get("line1") or not data["line1"].strip():
+        data["line1"] = f"{payload.label}, {payload.city}"
+    address = Address(user_id=user.id, **data)
     db.add(address)
     await db.commit()
     await db.refresh(address)

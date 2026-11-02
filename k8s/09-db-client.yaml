@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------------
+# Database Client Pod (`db-client`)
+# Pre-configured with PGHOST, PGPORT, PGUSER, PGPASSWORD, and PGDATABASE so
+# operators can open an interactive psql shell or run pg_dump with one command:
+#
+#   kubectl -n quickkart exec -it db-client -- psql
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-client
+  namespace: quickkart
+  labels:
+    app.kubernetes.io/name: db-client
+    app.kubernetes.io/component: database-client
+    app.kubernetes.io/part-of: quickkart
+spec:
+  restartPolicy: Always
+  containers:
+    - name: psql
+      image: postgres:16-alpine
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: PGHOST
+          valueFrom:
+            configMapKeyRef:
+              name: quickkart-config
+              key: POSTGRES_HOST
+        - name: PGPORT
+          valueFrom:
+            configMapKeyRef:
+              name: quickkart-config
+              key: POSTGRES_PORT
+        - name: PGDATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: quickkart-config
+              key: POSTGRES_DB
+        - name: PGUSER
+          valueFrom:
+            configMapKeyRef:
+              name: quickkart-config
+              key: POSTGRES_USER
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: quickkart-secrets
+              key: POSTGRES_PASSWORD
+      command:
+        - sh
+        - -c
+        - "trap : TERM INT; sleep infinity & wait"
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+

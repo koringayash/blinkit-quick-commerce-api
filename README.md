@@ -121,7 +121,14 @@ Blink It/
 │       ├── order_service.py    # Multi-item checkout, order placement, expiry & history
 │       ├── payment_service.py  # Razorpay & Mock payment gateways, COD, webhook verifications
 │       └── store_service.py    # Dark store CRUD, Haversine serviceability & per-store stock
-├── requirements.txt            # Project dependencies
+├── frontend/                   # React 19 + TanStack Start + Tailwind CSS v4 frontend (QuickKart UI)
+│   ├── package.json            # Frontend dependencies & scripts (npm run dev / bun run dev)
+│   ├── vite.config.ts          # Vite + TanStack Start configuration
+│   └── src/
+│       ├── components/         # SiteHeader (Location/Store picker, Autocomplete), ProductTile, AddressForm
+│       ├── lib/                # Typed FastAPI client (api.ts), cart hooks (cart.ts), auth/store session (session.tsx)
+│       └── routes/             # Home, Search/Facets, Product, Cart/Checkout, Live Order Tracking, Account, Admin
+├── requirements.txt            # Python backend dependencies
 └── README.md
 ```
 
@@ -220,7 +227,78 @@ Blink It/
 
 ---
 
-## 🚀 Getting Started
+## 🐳 Run Everything with Docker (one command)
+
+Requires Docker Desktop (Compose v2.24+).
+
+```powershell
+docker compose up --build -d      # or: make up
+```
+
+| Service | URL | Notes |
+|---|---|---|
+| Frontend (QuickKart UI) | http://localhost:3000 | Nitro `node-server` SSR build |
+| Backend API | http://localhost:8000 | Swagger at `/docs`, health at `/health` |
+| PostgreSQL | `localhost:5432` | Data persisted in the `pgdata` volume |
+
+Demo logins (auto-seeded on first start): `demo@quickkart.com` / `demo1234` and `admin@quickkart.com` / `admin1234`.
+
+Startup order is enforced by health checks: **db** (`pg_isready`) → **backend** (`/health`, which also pings the DB) → **frontend**.
+
+| Make target | Equivalent command | Purpose |
+|---|---|---|
+| `make up` | `docker compose up --build -d` | Build & start the full stack |
+| `make dev` | `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` | Hot reload: Vite on :8080, uvicorn `--reload` on :8000 |
+| `make logs` | `docker compose logs -f` | Follow logs |
+| `make ps` | `docker compose ps` | Status & health |
+| `make down` | `docker compose down` | Stop (keeps DB data) |
+| `make clean` | `docker compose down -v` | Stop and wipe the DB (re-seeds next start) |
+| `make db-shell` | `docker compose exec db psql ...` | psql into the database |
+
+Configuration: copy [`.env.example`](.env.example) to `.env` (done automatically by `make up`). If the API is served from another host/port, set `VITE_API_BASE_URL` — it is baked into the frontend bundle at build time, so rebuild after changing it.
+
+> [!NOTE]
+> The backend intentionally runs a **single uvicorn worker**: live delivery tracking, the rate limiter and the order-expiry sweeper keep state in process memory.
+
+---
+
+## ☸️ Kubernetes Deployment (`k8s/`)
+
+All Kubernetes manifests are located in [`k8s/`](k8s/) and managed via Kustomize ([`k8s/kustomization.yaml`](k8s/kustomization.yaml)):
+
+| File | Kind | Purpose |
+|---|---|---|
+| [`k8s/00-namespace.yaml`](k8s/00-namespace.yaml) | `Namespace` | Isolated `quickkart` namespace |
+| [`k8s/01-configmap.yaml`](k8s/01-configmap.yaml) | `ConfigMap` | Backend environment configuration + `nginx.conf` for the gateway |
+| [`k8s/02-secrets.yaml`](k8s/02-secrets.yaml) | `Secret` | `POSTGRES_PASSWORD`, `DATABASE_URL`, `JWT_SECRET`, Razorpay keys |
+| [`k8s/03-postgres.yaml`](k8s/03-postgres.yaml) | `StatefulSet` + `Service` | PostgreSQL 16 with a `10Gi` `PersistentVolumeClaim` (`pgdata`) and `pg_isready` probes |
+| [`k8s/04-backend.yaml`](k8s/04-backend.yaml) | `Deployment` + `Service` | FastAPI backend with a `wait-for-postgres` initContainer and `/health` probes |
+| [`k8s/05-frontend.yaml`](k8s/05-frontend.yaml) | `Deployment` + `Service` + `HPA` | TanStack Start SSR frontend (autoscaled 2–6 replicas via `HorizontalPodAutoscaler`) |
+| [`k8s/06-gateway-nginx.yaml`](k8s/06-gateway-nginx.yaml) | `Deployment` + `Service` | Nginx `LoadBalancer` reverse proxy routing `/api/*` $\rightarrow$ `backend:8000` (SSE unbuffered) and `/*` $\rightarrow$ `frontend:3000` |
+| [`k8s/07-ingress.yaml`](k8s/07-ingress.yaml) | `Ingress` | Cluster `ingress-nginx` rule with SSE streaming annotations |
+| [`k8s/08-networkpolicy.yaml`](k8s/08-networkpolicy.yaml) | `NetworkPolicy` | Locks down `postgres:5432` so only `backend` and `db-client` Pods can connect |
+| [`k8s/09-db-client.yaml`](k8s/09-db-client.yaml) | `Pod` | Pre-authenticated PostgreSQL client Pod (`db-client`) for interactive `psql` and `pg_dump` |
+| [`k8s/kustomization.yaml`](k8s/kustomization.yaml) | `Kustomization` | Applies the entire stack in order with `kubectl apply -k k8s/` |
+
+### Deploy to Kubernetes in One Command
+```powershell
+# 1. Build images (when using Docker Desktop Kubernetes / Minikube / Kind, build with VITE_API_BASE_URL=/api)
+docker build -t quickkart-backend:latest .
+docker build --build-arg VITE_API_BASE_URL=/api -t quickkart-frontend:latest ./frontend
+
+# 2. Apply all manifests
+kubectl apply -k k8s/               # or: make k8s-up
+
+# 3. Check status
+kubectl -n quickkart get pods,svc,pvc,hpa,ingress   # or: make k8s-status
+
+# 4. Open interactive PostgreSQL client inside the cluster
+kubectl -n quickkart exec -it db-client -- psql     # or: make k8s-psql
+```
+
+---
+
+## 🚀 Getting Started (without Docker)
 
 ### 1. Prerequisites
 - Python 3.11+
@@ -265,11 +343,23 @@ $env:LOG_FORMAT = "json"
 $env:RATE_LIMIT_PER_MINUTE = "100"
 ```
 
-### 5. Run the Server
+### 5. Run the Backend Server
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
-Open **http://127.0.0.1:8000/docs** to explore and test the interactive OpenAPI documentation.
+- Interactive Swagger UI: **http://127.0.0.1:8000/docs**
+- On first startup, the backend automatically seeds **4 neighborhood Dark Stores** (`560038` Indiranagar, `560034` Koramangala, `400050` Bandra West, `380009` Navrangpura), **18 grocery products** across 8 categories with per-store stock, and **2 ready-to-use demo accounts**:
+  - **Customer Demo**: `demo@quickkart.com` / `demo1234`
+  - **Admin Demo**: `admin@quickkart.com` / `admin1234`
+
+### 6. Run the Frontend (`frontend/`)
+In a second terminal:
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+Open the URL printed by Vite (default **http://localhost:8080**) to use the full **QuickKart** web app connected to `http://localhost:8000`.
 
 ---
 

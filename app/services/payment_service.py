@@ -14,8 +14,13 @@ State machine (all transitions run under row locks: order row first, then paymen
                                             reserved stock is released by cancel or expiry)
     payment captured for an order that is no longer payable (expired/cancelled/superseded) -> REFUNDED
 """
+import asyncio
+import base64
 import hashlib
 import hmac
+import json
+import urllib.error
+import urllib.request
 import uuid
 from abc import ABC, abstractmethod
 from decimal import Decimal
@@ -106,33 +111,73 @@ class MockPaymentGateway(PaymentGateway):
 
 class RazorpayPaymentGateway(PaymentGateway):
     """
-    Razorpay adapter. Webhook verification (X-Razorpay-Signature, HMAC-SHA256) is production-ready.
-    The Orders and Refunds API calls are NOT wired yet: they need the `razorpay` SDK (or an HTTP
-    client) plus network access. They fail loudly with 501 instead of returning fake order ids.
+    Production Razorpay adapter using Razorpay's REST API v1 (`https://api.razorpay.com/v1`)
+    with HTTP Basic Auth (`key_id:key_secret`) and HMAC-SHA256 webhook signature verification.
     """
 
     name = "RAZORPAY"
+    BASE_URL = "https://api.razorpay.com/v1"
 
     def __init__(self, key_id: str, key_secret: str, webhook_secret: str):
         super().__init__(webhook_secret)
         self.key_id = key_id
         self.key_secret = key_secret
 
+    def _request_sync(self, method: str, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self.key_id or not self.key_secret or self.key_id == "rzp_test_mock_key":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Live Razorpay credentials (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET) are not configured",
+            )
+        creds = base64.b64encode(f"{self.key_id}:{self.key_secret}".encode("utf-8")).decode("ascii")
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.BASE_URL}{path}",
+            data=data,
+            method=method,
+            headers={
+                "Authorization": f"Basic {creds}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            err_body = exc.read().decode("utf-8", errors="replace")
+            logger.error(
+                f"Razorpay API HTTP {exc.code} on {path}: {err_body}",
+                extra={"status_code": exc.code, "path": path},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Payment gateway error ({exc.code})",
+            ) from exc
+        except urllib.error.URLError as exc:
+            logger.error(f"Razorpay API network error on {path}: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to reach Razorpay payment gateway",
+            ) from exc
+
     async def create_payment_order(
         self, amount: Decimal, currency: str, receipt: str, notes: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        # TODO: razorpay.Client(auth=(key_id, key_secret)).order.create(
-        #     {"amount": _to_minor_units(amount), "currency": currency, "receipt": receipt, "notes": notes})
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Razorpay Orders API integration is not configured on this server",
-        )
+        payload = {
+            "amount": _to_minor_units(amount),
+            "currency": currency,
+            "receipt": receipt,
+            "notes": notes or {},
+        }
+        res = await asyncio.to_thread(self._request_sync, "POST", "/orders", payload)
+        res.setdefault("payment_token", self.key_id)
+        return res
 
     async def process_refund(self, gateway_payment_id: str, amount: Decimal) -> dict[str, Any]:
-        # TODO: client.payment.refund(gateway_payment_id, {"amount": _to_minor_units(amount)})
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Razorpay Refunds API integration is not configured on this server",
+        payload = {"amount": _to_minor_units(amount)}
+        return await asyncio.to_thread(
+            self._request_sync, "POST", f"/payments/{gateway_payment_id}/refund", payload
         )
 
 

@@ -79,6 +79,7 @@ def _to_item_response(item: InventoryItem, available_qty: int | None = None) -> 
         category=item.category,
         brand=item.brand,
         description=item.description,
+        image_url=item.image_url,
         price=float(item.price),
         available_qty=qty,
     )

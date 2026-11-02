@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quickkart-config
+  namespace: quickkart
+  labels:
+    app.kubernetes.io/part-of: quickkart
+data:
+  # --- PostgreSQL connection metadata ---
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "quickkart"
+  POSTGRES_USER: "quickkart"
+
+  # --- FastAPI Backend settings ---
+  ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+  ADMIN_EMAILS: "admin@quickkart.com,admin@blinkit.com"
+  CORS_ORIGINS: "*"
+  ALLOWED_HOSTS: "*"
+  RATE_LIMIT_PER_MINUTE: "300"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  PAYMENT_GATEWAY: "MOCK"
+  PAYMENT_TIMEOUT_MINUTES: "15"
+  ORDER_EXPIRY_SWEEP_SECONDS: "60"
+
+  # --- Nginx Reverse Proxy configuration mounted into the gateway Pod ---
+  nginx.conf: |
+    worker_processes auto;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+
+        sendfile        on;
+        keepalive_timeout 65;
+        client_max_body_size 10m;
+
+        upstream quickkart_backend {
+            server backend.quickkart.svc.cluster.local:8000;
+        }
+
+        upstream quickkart_frontend {
+            server frontend.quickkart.svc.cluster.local:3000;
+        }
+
+        server {
+            listen 80;
+            server_name _;
+
+            # Health probe for Kubernetes readiness/liveness on the gateway itself
+            location = /nginx-health {
+                access_log off;
+                return 200 "ok\n";
+                add_header Content-Type text/plain;
+            }
+
+            # 1-Hz Server-Sent Events (SSE) live delivery tracking: disable proxy buffering
+            location ~ ^/api/me/orders/[0-9]+/tracking/stream$ {
+                rewrite ^/api/(.*)$ /$1 break;
+                proxy_pass http://quickkart_backend;
+                proxy_http_version 1.1;
+                proxy_set_header Connection "";
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_buffering off;
+                proxy_cache off;
+                proxy_read_timeout 3600s;
+            }
+
+            # FastAPI Backend (/api/* -> /*)
+            location /api/ {
+                rewrite ^/api/(.*)$ /$1 break;
+                proxy_pass http://quickkart_backend;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            # TanStack Start SSR Frontend
+            location / {
+                proxy_pass http://quickkart_frontend;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+        }
+    }
+

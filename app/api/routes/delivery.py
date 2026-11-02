@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_user_sse
 from app.core.database import get_db
 from app.models import Order, User
 from app.schemas.delivery import DeliveryStatusSnapshot
@@ -43,7 +43,7 @@ async def get_delivery_tracking(
 @router.get("/{order_id}/tracking/stream")
 async def stream_delivery_tracking(
     order_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_sse),
     db: AsyncSession = Depends(get_db),
 ):
     """

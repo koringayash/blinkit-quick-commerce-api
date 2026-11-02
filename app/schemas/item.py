@@ -22,6 +22,7 @@ class ItemCreate(BaseModel):
         max_length=500,
         examples=["Pasteurized toned milk, rich in calcium and protein."],
     )
+    image_url: str | None = Field(None, max_length=500, examples=["https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400"])
     price: float = Field(..., gt=0, examples=[27.0])
     available_qty: int = Field(..., ge=0, examples=[15])
 
@@ -31,6 +32,7 @@ class ItemUpdate(BaseModel):
     category: str | None = Field(None, min_length=1, max_length=50)
     brand: str | None = Field(None, min_length=1, max_length=50)
     description: str | None = Field(None, max_length=500)
+    image_url: str | None = Field(None, max_length=500)
     price: float | None = Field(None, gt=0)
 
 
@@ -48,6 +50,7 @@ class ItemResponse(BaseModel):
     category: str | None = None
     brand: str | None = None
     description: str | None = None
+    image_url: str | None = None
     price: float
     available_qty: int
 

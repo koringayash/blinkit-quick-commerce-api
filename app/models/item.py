@@ -13,6 +13,7 @@ class InventoryItem(Base):
     category: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     brand: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     available_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

@@ -1,0 +1,28 @@
+# Backend build context = repo root. Only requirements.txt and app/ are needed.
+.git
+.gitignore
+.vscode
+.idea
+.venv
+venv
+env
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.env
+.env.*
+*.log
+logs
+
+# Frontend has its own Dockerfile & build context
+frontend
+
+# Docker / docs files are not needed inside the image
+Dockerfile
+docker-compose*.yml
+Makefile
+README.md
+

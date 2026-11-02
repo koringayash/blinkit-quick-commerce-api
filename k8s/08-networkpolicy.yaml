@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------------------
+# NetworkPolicy: Restrict PostgreSQL (port 5432) access strictly to Backend
+# and DB-Client Pods inside the `quickkart` namespace.
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-only-backend-and-client
+  namespace: quickkart
+  labels:
+    app.kubernetes.io/part-of: quickkart
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: backend
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: db-client
+      ports:
+        - protocol: TCP
+          port: 5432
+

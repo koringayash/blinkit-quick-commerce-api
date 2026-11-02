@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------------
+# Kubernetes Ingress (for clusters running ingress-nginx / cloud load balancers)
+# Disables proxy buffering so 1-Hz Server-Sent Events (SSE) stream in real time.
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: quickkart-ingress
+  namespace: quickkart
+  labels:
+    app.kubernetes.io/name: quickkart-ingress
+    app.kubernetes.io/part-of: quickkart
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 80
+

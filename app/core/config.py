@@ -20,7 +20,9 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 
 # Comma-separated emails that get admin rights when they register.
 ADMIN_EMAILS = {
-    e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()
+    e.strip().lower()
+    for e in os.getenv("ADMIN_EMAILS", "admin@quickkart.com,admin@blinkit.com").split(",")
+    if e.strip()
 }
 
 # --- Middleware & Logging Settings ---
@@ -31,7 +33,7 @@ ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "*").split(",") i
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
 
 # In-memory sliding-window rate limit (requests per client IP per minute)
-RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "300"))
 
 # Logging settings
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
