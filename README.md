@@ -9,11 +9,11 @@ A high-concurrency, asynchronous **FastAPI** service for a quick-commerce store 
 - **Multi-Dark-Store & Geo-Serviceability (`/stores`)**:
   - **Neighborhood Dark Stores (`dark_stores`)**: Manage hyperlocal micro-warehouses with GPS coordinates (`latitude`, `longitude`), `service_radius_km` (default `3.0 km`), and `base_prep_minutes` (default `3 min`).
   - **Per-Store Inventory (`dark_store_stocks`)**: Track SKU stock per dark store while automatically keeping aggregate `inventory_items.available_qty` in sync.
-  - **Haversine Geo-Serviceability Check (`GET /stores/serviceability`)**: Given customer GPS coordinates (`lat`, `lng`), a `pincode`, or a saved `address_id`, finds the nearest active dark store within its delivery radius, computes exact distance in km, and estimates delivery ETA ($\text{ETA} = \text{base\_prep\_minutes} + \lceil \text{distance\_km} \times 3.0 \rceil$).
+  - **Haversine Geo-Serviceability Check (`GET /stores/serviceability`)**: Given customer GPS coordinates (`lat`, `lng`), a `pincode`, or a saved `address_id`, finds the nearest active dark store within its delivery radius, computes exact distance in km, and estimates delivery ETA (`ETA = base_prep_minutes + ceil(distance_km × 3.0)`).
   - **End-to-End Store Scoping**: Search (`GET /items/search`), autocomplete, cart (`GET /me/cart`), checkout (`POST /me/cart/checkout`), order cancellation/expiry stock restoration, and 1-Hz live GPS delivery tracking all natively support dark-store-specific stock and pickup coordinates.
 - **Product Catalog, Search & Discovery**:
   - Add & update products with SKU, name, category, brand, description, price, and starting quantity.
-  - **Multi-Token Relevance Search (`GET /items/search`)**: Case-insensitive search across name, SKU, brand, category, and description with weighted relevance ranking (exact match $\rightarrow$ prefix match $\rightarrow$ substring match $\rightarrow$ in-stock boost).
+  - **Multi-Token Relevance Search (`GET /items/search`)**: Case-insensitive search across name, SKU, brand, category, and description with weighted relevance ranking (exact match → prefix match → substring match → in-stock boost).
   - **Faceted Filtering & Sorting**: Filter by `category`, `brand`, `min_price`, `max_price`, `in_stock`, or batch `skus`; sort by `relevance`, `price_asc`, `price_desc`, `name_asc`, `name_desc`, or `stock_desc`.
   - **Search Bar Autocomplete (`GET /items/suggest`)**: Instant typeahead returning matching products, categories, and brands.
   - **Category & Brand Facets (`GET /items/categories`, `GET /items/brands`)**: Browse categories and brands with total and in-stock item counts.
@@ -274,7 +274,7 @@ All Kubernetes manifests are located in [`k8s/`](k8s/) and managed via Kustomize
 | [`k8s/03-postgres.yaml`](k8s/03-postgres.yaml) | `StatefulSet` + `Service` | PostgreSQL 16 with a `10Gi` `PersistentVolumeClaim` (`pgdata`) and `pg_isready` probes |
 | [`k8s/04-backend.yaml`](k8s/04-backend.yaml) | `Deployment` + `Service` | FastAPI backend with a `wait-for-postgres` initContainer and `/health` probes |
 | [`k8s/05-frontend.yaml`](k8s/05-frontend.yaml) | `Deployment` + `Service` + `HPA` | TanStack Start SSR frontend (autoscaled 2–6 replicas via `HorizontalPodAutoscaler`) |
-| [`k8s/06-gateway-nginx.yaml`](k8s/06-gateway-nginx.yaml) | `Deployment` + `Service` | Nginx `LoadBalancer` reverse proxy routing `/api/*` $\rightarrow$ `backend:8000` (SSE unbuffered) and `/*` $\rightarrow$ `frontend:3000` |
+| [`k8s/06-gateway-nginx.yaml`](k8s/06-gateway-nginx.yaml) | `Deployment` + `Service` | Nginx `LoadBalancer` reverse proxy routing `/api/*` → `backend:8000` (SSE unbuffered) and `/*` → `frontend:3000` |
 | [`k8s/07-ingress.yaml`](k8s/07-ingress.yaml) | `Ingress` | Cluster `ingress-nginx` rule with SSE streaming annotations |
 | [`k8s/08-networkpolicy.yaml`](k8s/08-networkpolicy.yaml) | `NetworkPolicy` | Locks down `postgres:5432` so only `backend` and `db-client` Pods can connect |
 | [`k8s/09-db-client.yaml`](k8s/09-db-client.yaml) | `Pod` | Pre-authenticated PostgreSQL client Pod (`db-client`) for interactive `psql` and `pg_dump` |
@@ -495,10 +495,10 @@ When `LOG_FORMAT=json`, log records are emitted as JSON lines compatible with Da
 Quick-commerce delivery apps require second-by-second live location updates without causing database write amplification or hitting 3rd-party logistics API rate limits.
 
 ### How it Works:
-1. **Asynchronous Dispatch**: Checkout commits immediately. The dispatch call to the third-party delivery partner runs in the background, keeping checkout response latency $< 30\text{ms}$.
+1. **Asynchronous Dispatch**: Checkout commits immediately. The dispatch call to the third-party delivery partner runs in the background, keeping checkout response latency `< 30 ms`.
 2. **Ephemeral In-Memory GPS Engine**: High-frequency 1-Hz GPS ticks stream from an in-memory active tracking state directly to connected users via **Server-Sent Events (SSE)**.
 3. **Milestone-Only DB Persistence**: Only significant lifecycle transitions are committed to PostgreSQL:
-   - `ASSIGNED` $\rightarrow$ `REACHED_DARK_STORE` $\rightarrow$ `PICKED_UP` $\rightarrow$ `OUT_FOR_DELIVERY` $\rightarrow$ `DELIVERED`
+   - `ASSIGNED` → `REACHED_DARK_STORE` → `PICKED_UP` → `OUT_FOR_DELIVERY` → `DELIVERED`
 4. **Provider Abstraction**: A clean `DeliveryProvider` interface separates business logic from partner-specific implementations. The built-in `SimulatorDeliveryProvider` models dark store dispatch and smooth route interpolation, and can be swapped for Dunzo, Shadowfax, or Borzo by implementing the interface.
 
 ---
